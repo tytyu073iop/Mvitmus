@@ -1,11 +1,34 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mockito/mockito.dart';
 import 'package:vitmus/bloc/map_bloc.dart';
 import 'package:vitmus/models/district.dart';
+import 'package:vitmus/models/museum.dart';
+import 'package:vitmus/models/exhibition.dart';
 import 'package:vitmus/repositories/museum_repository.dart';
 import 'package:latlong2/latlong.dart';
 
-class MockMuseumRepository extends Mock implements MuseumRepository {}
+class MockMuseumRepository implements MuseumRepository {
+  Future<List<District>> Function()? mockGetDistricts;
+  Future<List<Museum>> Function(int)? mockGetMuseumsByDistrict;
+
+  @override
+  Future<List<District>> getDistricts() {
+    if (mockGetDistricts != null) return mockGetDistricts!();
+    throw UnimplementedError('mockGetDistricts not set');
+  }
+
+  @override
+  Future<List<Museum>> getMuseumsByDistrict(int districtId) {
+    if (mockGetMuseumsByDistrict != null) {
+      return mockGetMuseumsByDistrict!(districtId);
+    }
+    throw UnimplementedError('mockGetMuseumsByDistrict not set');
+  }
+
+  @override
+  Future<List<Exhibition>> getExhibitionsByMuseum(int museumId) {
+    throw UnimplementedError('getExhibitionsByMuseum not expected');
+  }
+}
 
 void main() {
   late MockMuseumRepository repository;
@@ -35,8 +58,7 @@ void main() {
     });
 
     test('emits [MapLoading, DistrictsLoaded] on LoadDistricts', () async {
-      when(repository.getDistricts())
-          .thenAnswer((_) async => [testDistrict]);
+      repository.mockGetDistricts = () async => [testDistrict];
 
       final expected = [
         const MapLoading(),
@@ -48,7 +70,7 @@ void main() {
     });
 
     test('emits MapError when repository throws', () async {
-      when(repository.getDistricts()).thenThrow(Exception('DB error'));
+      repository.mockGetDistricts = () => throw Exception('DB error');
 
       final expected = [
         const MapLoading(),
@@ -60,13 +82,11 @@ void main() {
     });
 
     test('emits MapError on LoadMuseums error', () async {
-      when(repository.getDistricts())
-          .thenAnswer((_) async => [testDistrict]);
+      repository.mockGetDistricts = () async => [testDistrict];
       bloc.add(const LoadDistricts());
       await Future.delayed(Duration.zero);
 
-      when(repository.getMuseumsByDistrict(1))
-          .thenThrow(Exception('DB error'));
+      repository.mockGetMuseumsByDistrict = (id) => throw Exception('DB error');
 
       final expected = [
         isA<MapError>(),

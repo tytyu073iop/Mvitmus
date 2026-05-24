@@ -26,6 +26,25 @@ class _TestRepository extends MuseumRepository {
   }
 }
 
+class _DelayedTestRepository extends MuseumRepository {
+  _DelayedTestRepository() : super.forTest();
+
+  @override
+  Future<List<District>> getDistricts() async {
+    await Future.delayed(const Duration(seconds: 1));
+    return [
+      const District(
+        id: 1,
+        nameRu: 'Тестовый район',
+        nameEn: 'Test District',
+        nameBe: 'Тэставы раён',
+        center: LatLng(55.19, 30.20),
+        polygon: [LatLng(55.19, 30.20), LatLng(55.20, 30.21)],
+      ),
+    ];
+  }
+}
+
 void main() {
   group('MapScreen widget', () {
     late L10n l10n;
@@ -41,14 +60,17 @@ void main() {
           value: l10n,
           child: MaterialApp(
             home: BlocProvider(
-              create: (_) => MapBloc(_TestRepository()),
+              create: (_) => MapBloc(_DelayedTestRepository()),
               child: MapScreen(onLocaleChanged: (_) {}),
             ),
           ),
         ),
       );
 
+      await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
     });
 
     testWidgets('shows map after loading districts', (tester) async {

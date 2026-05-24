@@ -1,10 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mockito/mockito.dart';
 import 'package:vitmus/bloc/weather_bloc.dart';
 import 'package:vitmus/models/weather.dart';
 import 'package:vitmus/repositories/weather_repository.dart';
 
-class MockWeatherRepository extends Mock implements WeatherRepository {}
+class MockWeatherRepository implements WeatherRepository {
+  Future<Weather> Function()? mockGetWeather;
+
+  @override
+  Future<Weather> getWeather(double lat, double lng) {
+    if (mockGetWeather != null) return mockGetWeather!();
+    throw UnimplementedError('mockGetWeather not set');
+  }
+}
 
 void main() {
   late MockWeatherRepository repository;
@@ -28,15 +35,13 @@ void main() {
     });
 
     test('emits [WeatherLoading, WeatherLoaded] on FetchWeather', () async {
-      when(repository.getWeather(testLat, testLng)).thenAnswer(
-        (_) async => const Weather(
-          temperature: 20.0,
-          feelsLike: 18.0,
-          description: 'clear sky',
-          icon: '01d',
-          humidity: 50,
-          windSpeed: 3.5,
-        ),
+      repository.mockGetWeather = () async => const Weather(
+        temperature: 20.0,
+        feelsLike: 18.0,
+        description: 'clear sky',
+        icon: '01d',
+        humidity: 50,
+        windSpeed: 3.5,
       );
 
       final expected = [
@@ -49,8 +54,7 @@ void main() {
     });
 
     test('emits WeatherError when repository throws', () async {
-      when(repository.getWeather(testLat, testLng))
-          .thenThrow(Exception('Network error'));
+      repository.mockGetWeather = () => throw Exception('Network error');
 
       final expected = [
         const WeatherLoading(),
