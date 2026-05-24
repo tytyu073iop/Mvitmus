@@ -113,7 +113,7 @@ jobs:
   release:
     name: Publish GitHub release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -132,7 +132,28 @@ jobs:
           tar -C artifacts/vitmus-web -czf release/vitmus-web-${{ github.ref_name }}.tar.gz .
           tar -C artifacts/vitmus-linux -czf release/vitmus-linux-${{ github.ref_name }}.tar.gz .
 
+      - name: Determine release info
+        id: release_info
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "name=Release ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=nightly-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "name=Nightly Build ${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.release_info.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.release_info.outputs.name }}
+          prerelease: ${{ steps.release_info.outputs.prerelease }}
+          make_latest: ${{ steps.release_info.outputs.make_latest }}
           files: release/*
