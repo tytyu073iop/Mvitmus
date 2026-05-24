@@ -1,0 +1,138 @@
+name: Flutter CI
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.44.0'
+
+jobs:
+  quality:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Prepare app config
+        run: cp lib/config.example.dart lib/config.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: quality
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: Android APK
+            os: ubuntu-latest
+            command: flutter build apk --release
+            artifact_name: vitmus-android-apk
+            artifact_path: build/app/outputs/flutter-apk/app-release.apk
+          - target: Web
+            os: ubuntu-latest
+            command: flutter build web --release
+            artifact_name: vitmus-web
+            artifact_path: build/web
+          - target: Linux
+            os: ubuntu-latest
+            command: flutter build linux --release
+            artifact_name: vitmus-linux
+            artifact_path: build/linux/x64/release/bundle
+          - target: iOS
+            os: macos-latest
+            command: flutter test && flutter build ios --release --no-codesign
+            artifact_name: ''
+            artifact_path: ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Linux build dependencies
+        if: matrix.target == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake libgtk-3-dev libsqlite3-dev ninja-build pkg-config
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Prepare app config
+        run: cp lib/config.example.dart lib/config.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build
+        run: ${{ matrix.command }}
+
+      - name: Upload artifact
+        if: matrix.artifact_path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package artifacts
+        shell: bash
+        run: |
+          mkdir -p release
+          cp artifacts/vitmus-android-apk/app-release.apk release/vitmus-${{ github.ref_name }}.apk
+          tar -C artifacts/vitmus-web -czf release/vitmus-web-${{ github.ref_name }}.tar.gz .
+          tar -C artifacts/vitmus-linux -czf release/vitmus-linux-${{ github.ref_name }}.tar.gz .
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
